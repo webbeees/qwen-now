@@ -1,0 +1,11 @@
+# Force LF line endings for all text files
+* text=auto eol=lf
+
+# Explicitly set LF for scripts and Python files
+*.sh text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# Dockerfile should also use LF
+Dockerfile text eol=lf

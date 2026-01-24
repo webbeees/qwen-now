@@ -11,6 +11,7 @@ import urllib.parse
 import binascii # Base64 에러 처리를 위해 import
 import subprocess
 import time
+from PIL import Image  # For reading image dimensions when skip_resize
 
 
 # 로깅 설정
@@ -228,10 +229,47 @@ def handler(job):
 
     prompt["111"]["inputs"]["prompt"] = job_input["prompt"]
 
+    # --- Seed parameter ---
+    prompt["3"]["inputs"]["seed"] = job_input.get("seed", 0)
 
-    prompt["3"]["inputs"]["seed"] = job_input["seed"]
-    prompt["128"]["inputs"]["value"] = job_input["width"]
-    prompt["129"]["inputs"]["value"] = job_input["height"]
+    # --- Steps parameter (node 3 - KSampler) ---
+    # Lightning LoRA is optimized for 4 steps, but more steps (8-20) can improve quality
+    steps = job_input.get("steps", 4)
+    prompt["3"]["inputs"]["steps"] = steps
+
+    # --- Resize mode and dimensions ---
+    resize_mode = job_input.get("resize_mode", "stretch")
+    width = job_input.get("width", 512)
+    height = job_input.get("height", 512)
+
+    # Skip resize: width=0 and height=0 OR resize_mode="disabled"
+    skip_resize = (width == 0 and height == 0) or resize_mode == "disabled"
+
+    if skip_resize:
+        # Get original image dimensions
+        with Image.open(image1_path) as img:
+            width, height = img.size
+        # Ensure divisible by 2 (VAE requirement)
+        width = width - (width % 2)
+        height = height - (height % 2)
+
+        # Bypass resize node - connect LoadImage directly to encoders
+        prompt["110"]["inputs"]["image1"] = ["78", 0]
+        prompt["111"]["inputs"]["image1"] = ["78", 0]
+
+        # For 2-image workflow, also bypass node 130
+        if image2_path:
+            prompt["110"]["inputs"]["image2"] = ["123", 0]
+            prompt["111"]["inputs"]["image2"] = ["123", 0]
+    else:
+        # Set resize mode on ImageResizeKJv2 node(s)
+        prompt["127"]["inputs"]["keep_proportion"] = resize_mode
+        if image2_path:
+            prompt["130"]["inputs"]["keep_proportion"] = resize_mode
+
+    # Set dimensions (either original or requested)
+    prompt["128"]["inputs"]["value"] = width
+    prompt["129"]["inputs"]["value"] = height
 
     ws_url = f"ws://{server_address}:8188/ws?clientId={client_id}"
     logger.info(f"Connecting to WebSocket: {ws_url}")
