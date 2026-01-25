@@ -17,6 +17,30 @@ jobs:
       packages: write
 
     steps:
+      # FIRST: Clean up disk space before anything else
+      - name: Free disk space (aggressive)
+        run: |
+          echo "Initial disk space:"
+          df -h
+          
+          # Remove large unnecessary directories
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/local/share/boost || true
+          sudo rm -rf /usr/share/swift || true
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true
+          
+          # Clean docker
+          docker system prune -af || true
+          
+          # Clean apt cache
+          sudo apt-get clean || true
+          
+          echo "Disk space after cleanup:"
+          df -h
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -30,7 +54,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -47,5 +71,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
