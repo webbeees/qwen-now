@@ -309,7 +309,10 @@ async def generate(request: GenerateRequest):
     height = request.height
     resize_mode = request.resize_mode
     
+    logger.info(f"Resize params: width={width}, height={height}, resize_mode='{resize_mode}'")
+    
     skip_resize = (width == 0 and height == 0) or resize_mode == "disabled"
+    logger.info(f"skip_resize={skip_resize}")
     
     if skip_resize:
         # Get original image dimensions
@@ -335,6 +338,7 @@ async def generate(request: GenerateRequest):
     # Set dimensions
     prompt["128"]["inputs"]["value"] = width
     prompt["129"]["inputs"]["value"] = height
+    logger.info(f"Final dimensions: {width}x{height}")
     
     # Connect to ComfyUI WebSocket
     ws_url = f"ws://{SERVER_ADDRESS}:8188/ws?clientId={client_id}"
