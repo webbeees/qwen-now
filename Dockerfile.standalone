@@ -3,12 +3,12 @@
 
 FROM wlsdml1114/multitalk-base:1.7 as runtime
 
-# Install wget for URL downloads
+# Install system dependencies
 RUN apt-get update && apt-get install -y wget curl && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 RUN pip install -U "huggingface_hub[hf_transfer]"
-RUN pip install websocket-client librosa
+RUN pip install websocket-client librosa Pillow
 RUN pip install fastapi uvicorn[standard] python-multipart
 
 # Set working directory
@@ -31,11 +31,41 @@ RUN cd /ComfyUI/custom_nodes/ && \
     cd ComfyUI-KJNodes && \
     pip install --no-cache-dir -r requirements.txt
 
-# Download models
-RUN wget -q https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors -O /ComfyUI/models/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors
-RUN wget -q https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Lightning-4steps-V1.0.safetensors -O /ComfyUI/models/loras/Qwen-Image-Lightning-4steps-V1.0.safetensors
-RUN wget -q https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors -O /ComfyUI/models/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors 
-RUN wget -q https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors -O /ComfyUI/models/vae/qwen_image_vae.safetensors
+# Create model directories (in case they don't exist)
+RUN mkdir -p /ComfyUI/models/diffusion_models \
+    /ComfyUI/models/loras \
+    /ComfyUI/models/text_encoders \
+    /ComfyUI/models/vae \
+    /ComfyUI/input
+
+# Download models (with error checking)
+RUN echo "Downloading diffusion model..." && \
+    wget --progress=bar:force https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors \
+    -O /ComfyUI/models/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors && \
+    ls -lh /ComfyUI/models/diffusion_models/
+
+RUN echo "Downloading LoRA model..." && \
+    wget --progress=bar:force https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Lightning-4steps-V1.0.safetensors \
+    -O /ComfyUI/models/loras/Qwen-Image-Lightning-4steps-V1.0.safetensors && \
+    ls -lh /ComfyUI/models/loras/
+
+RUN echo "Downloading text encoder..." && \
+    wget --progress=bar:force https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors \
+    -O /ComfyUI/models/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors && \
+    ls -lh /ComfyUI/models/text_encoders/
+
+RUN echo "Downloading VAE..." && \
+    wget --progress=bar:force https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors \
+    -O /ComfyUI/models/vae/qwen_image_vae.safetensors && \
+    ls -lh /ComfyUI/models/vae/
+
+# Verify all models exist
+RUN echo "Verifying models..." && \
+    test -f /ComfyUI/models/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors && \
+    test -f /ComfyUI/models/loras/Qwen-Image-Lightning-4steps-V1.0.safetensors && \
+    test -f /ComfyUI/models/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors && \
+    test -f /ComfyUI/models/vae/qwen_image_vae.safetensors && \
+    echo "All models verified!"
 
 # Copy application files
 COPY api_server.py /api_server.py
