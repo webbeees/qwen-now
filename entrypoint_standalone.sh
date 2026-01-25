@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Standalone entrypoint for GPU pods (Novita, Vast.ai, etc.)
-# Starts both ComfyUI and FastAPI server
+# Downloads models on first start, then runs ComfyUI + FastAPI
 
 set -e
 
@@ -62,6 +62,10 @@ else
 fi
 
 echo "Using CUDA device: $CUDA_VISIBLE_DEVICES"
+
+# Download models if needed (first start)
+echo ""
+/download_models.sh
 
 # Start ComfyUI in the background
 echo ""

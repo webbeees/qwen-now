@@ -1,5 +1,5 @@
 # Standalone Dockerfile for GPU pods (Novita, Vast.ai, etc.)
-# Runs FastAPI server instead of RunPod serverless handler
+# Models are downloaded at runtime to keep image size small for CI/CD
 
 FROM wlsdml1114/multitalk-base:1.7 as runtime
 
@@ -31,53 +31,26 @@ RUN cd /ComfyUI/custom_nodes/ && \
     cd ComfyUI-KJNodes && \
     pip install --no-cache-dir -r requirements.txt
 
-# Create model directories (in case they don't exist)
+# Create model directories
 RUN mkdir -p /ComfyUI/models/diffusion_models \
     /ComfyUI/models/loras \
     /ComfyUI/models/text_encoders \
     /ComfyUI/models/vae \
     /ComfyUI/input
 
-# Download models (with error checking)
-RUN echo "Downloading diffusion model..." && \
-    wget --progress=bar:force https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors \
-    -O /ComfyUI/models/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors && \
-    ls -lh /ComfyUI/models/diffusion_models/
-
-RUN echo "Downloading LoRA model..." && \
-    wget --progress=bar:force https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Lightning-4steps-V1.0.safetensors \
-    -O /ComfyUI/models/loras/Qwen-Image-Lightning-4steps-V1.0.safetensors && \
-    ls -lh /ComfyUI/models/loras/
-
-RUN echo "Downloading text encoder..." && \
-    wget --progress=bar:force https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors \
-    -O /ComfyUI/models/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors && \
-    ls -lh /ComfyUI/models/text_encoders/
-
-RUN echo "Downloading VAE..." && \
-    wget --progress=bar:force https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors \
-    -O /ComfyUI/models/vae/qwen_image_vae.safetensors && \
-    ls -lh /ComfyUI/models/vae/
-
-# Verify all models exist
-RUN echo "Verifying models..." && \
-    test -f /ComfyUI/models/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors && \
-    test -f /ComfyUI/models/loras/Qwen-Image-Lightning-4steps-V1.0.safetensors && \
-    test -f /ComfyUI/models/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors && \
-    test -f /ComfyUI/models/vae/qwen_image_vae.safetensors && \
-    echo "All models verified!"
+# NOTE: Models are downloaded at runtime by entrypoint_standalone.sh
+# This keeps the image small for GitHub Actions builds
 
 # Copy application files
 COPY api_server.py /api_server.py
 COPY qwen_image_edit_1.json /qwen_image_edit_1.json
 COPY qwen_image_edit_2.json /qwen_image_edit_2.json
 COPY entrypoint_standalone.sh /entrypoint_standalone.sh
+COPY download_models.sh /download_models.sh
 
-RUN chmod +x /entrypoint_standalone.sh
+RUN chmod +x /entrypoint_standalone.sh /download_models.sh
 
 # Expose ports
-# 8000 - FastAPI server
-# 8188 - ComfyUI (optional, for debugging)
 EXPOSE 8000 8188
 
 CMD ["/entrypoint_standalone.sh"]
