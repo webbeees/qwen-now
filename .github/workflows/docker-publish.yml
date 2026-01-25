@@ -16,6 +16,16 @@ jobs:
       contents: read
       packages: write
 
+    strategy:
+      matrix:
+        include:
+          - dockerfile: Dockerfile
+            suffix: ""
+            description: "RunPod serverless version"
+          - dockerfile: Dockerfile.standalone
+            suffix: "-standalone"
+            description: "Standalone pod version (Novita, Vast.ai, etc.)"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,15 +46,16 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=
+            type=raw,value=latest${{ matrix.suffix }},enable={{is_default_branch}}
+            type=sha,prefix=,suffix=${{ matrix.suffix }}
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image (${{ matrix.description }})
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.dockerfile }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.dockerfile }}
