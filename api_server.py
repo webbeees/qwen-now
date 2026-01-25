@@ -318,9 +318,7 @@ async def generate(request: GenerateRequest):
         # Get original image dimensions
         with Image.open(image1_path) as img:
             width, height = img.size
-        # Ensure divisible by 2 (VAE requirement)
-        width = width - (width % 2)
-        height = height - (height % 2)
+        logger.info(f"Original image size: {width}x{height}")
         
         # Bypass resize node
         prompt["110"]["inputs"]["image1"] = ["78", 0]
