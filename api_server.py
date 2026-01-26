@@ -161,22 +161,65 @@ def get_history(prompt_id: str) -> dict:
         return json.loads(response.read())
 
 
-def get_images(ws, prompt: dict) -> dict:
-    """Execute prompt and get resulting images."""
+def cancel_job(prompt_id: str):
+    """Cancel a specific job in ComfyUI queue."""
+    try:
+        # Delete from queue
+        url = f"http://{SERVER_ADDRESS}:8188/queue"
+        data = json.dumps({"delete": [prompt_id]}).encode('utf-8')
+        req = urllib.request.Request(url, data=data, method='POST')
+        req.add_header('Content-Type', 'application/json')
+        urllib.request.urlopen(req, timeout=5)
+        logger.info(f"Cancelled job: {prompt_id}")
+    except Exception as e:
+        logger.warning(f"Failed to cancel job {prompt_id}: {e}")
+
+
+def get_images(ws, prompt: dict, timeout_seconds: int = 90) -> dict:
+    """Execute prompt and get resulting images with timeout and cancellation."""
     prompt_id = queue_prompt(prompt)['prompt_id']
     output_images = {}
+    start_time = time.time()
     
-    while True:
-        out = ws.recv()
-        if isinstance(out, str):
-            message = json.loads(out)
-            if message['type'] == 'executing':
-                data = message['data']
-                if data['node'] is None and data['prompt_id'] == prompt_id:
-                    break
-        else:
-            continue
+    logger.info(f"Queued job {prompt_id}, waiting with {timeout_seconds}s timeout")
+    
+    try:
+        while True:
+            # Check timeout
+            elapsed = time.time() - start_time
+            if elapsed > timeout_seconds:
+                raise TimeoutError(f"Generation timed out after {timeout_seconds}s")
+            
+            # Set short recv timeout to allow periodic timeout checks
+            ws.settimeout(5)
+            try:
+                out = ws.recv()
+            except websocket.WebSocketTimeoutException:
+                # No message received, check timeout and continue waiting
+                continue
+            
+            if isinstance(out, str):
+                message = json.loads(out)
+                if message['type'] == 'executing':
+                    data = message['data']
+                    if data['node'] is None and data['prompt_id'] == prompt_id:
+                        break
+            else:
+                continue
+    except TimeoutError:
+        # Cancel the job on timeout
+        logger.warning(f"Job {prompt_id} timed out after {elapsed:.1f}s, cancelling")
+        cancel_job(prompt_id)
+        raise
+    except Exception as e:
+        # Cancel the job on any other error
+        logger.error(f"Job {prompt_id} failed: {e}, cancelling")
+        cancel_job(prompt_id)
+        raise
 
+    elapsed = time.time() - start_time
+    logger.info(f"Job {prompt_id} completed in {elapsed:.1f}s")
+    
     history = get_history(prompt_id)[prompt_id]
     for node_id in history['outputs']:
         node_output = history['outputs'][node_id]
@@ -344,10 +387,9 @@ async def generate(request: GenerateRequest):
     
     try:
         ws = websocket.WebSocket()
-        ws.settimeout(300)  # 5 minute timeout for generation
         ws.connect(ws_url)
         
-        images = get_images(ws, prompt)
+        images = get_images(ws, prompt, timeout_seconds=90)
         ws.close()
         
         # Clean up temp files
@@ -368,8 +410,13 @@ async def generate(request: GenerateRequest):
         
         raise HTTPException(status_code=500, detail="No images found in output")
         
+    except TimeoutError as e:
+        logger.warning(f"Request timed out: {e}")
+        raise HTTPException(status_code=504, detail=str(e))
     except websocket.WebSocketException as e:
         raise HTTPException(status_code=503, detail=f"ComfyUI connection failed: {e}")
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
         logger.error(f"Generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
