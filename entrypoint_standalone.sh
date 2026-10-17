@@ -92,6 +92,19 @@ if [ $wait_count -ge $max_wait ]; then
     exit 1
 fi
 
+# Hourly cleanup. /generate returns images inline, so nothing on disk is needed once a
+# request finishes; task_* input dirs leak when a request times out or errors.
+# Every command must tolerate failure: set -e is inherited and would end the loop.
+echo "Starting hourly cleanup (files older than 60 minutes)..."
+(
+    while true; do
+        removed=$(find /ComfyUI/output /ComfyUI/temp -type f -mmin +60 -print -delete 2>/dev/null | wc -l) || removed=0
+        find / -maxdepth 1 -type d -name 'task_*' -mmin +60 -exec rm -rf {} + 2>/dev/null || true
+        echo "[cleanup] $(date '+%Y-%m-%d %H:%M:%S') removed $removed old files"
+        sleep 3600
+    done
+) &
+
 # Start FastAPI server
 echo ""
 echo "Starting FastAPI server on port 8000..."
